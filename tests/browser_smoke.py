@@ -20,6 +20,18 @@ def docker(*args):
          container, *args], text=True
     ).strip()
 
+def window_titles():
+    # Query managed clients directly: walking Firefox's transient child windows
+    # with xwininfo -tree races with windows being created and destroyed.
+    return docker('python3', '-c', '''
+import re, subprocess
+clients = subprocess.check_output(['xprop', '-root', '_NET_CLIENT_LIST'], text=True)
+for window in re.findall(r'0x[0-9a-fA-F]+', clients):
+    result = subprocess.run(['xprop', '-id', window, '_NET_WM_NAME', 'WM_NAME'],
+                            capture_output=True, text=True)
+    print(result.stdout)
+''')
+
 password = docker('pc', 'senha')
 assert len(password) == 8 and password.isascii()
 assert docker('sh', '-c', 'stat -c %a "$HOME/.config/pc-virtual/password"') == '600'
@@ -60,7 +72,7 @@ with sync_playwright() as p:
     docker('sh', '-c', 'pkill -x xterm || true')
     docker('sh', '-c', 'nohup xterm -title "Desktop funcionando" -geometry 65x15+40+40 -e /bin/bash --noprofile --norc >/tmp/pc-test-xterm.log 2>&1 </dev/null &')
     page.wait_for_timeout(2000)
-    assert 'Desktop funcionando' in docker('sh', '-c', 'xwininfo -root -tree 2>/dev/null || true')
+    assert 'Desktop funcionando' in window_titles()
     def window_position():
         info = docker('xwininfo', '-name', 'Desktop funcionando')
         return tuple(int(re.search(r'Absolute upper-left ' + axis + r':\s+(-?\d+)', info).group(1))
@@ -85,7 +97,7 @@ with sync_playwright() as p:
     page.keyboard.press('Escape')
     docker('pc', 'navegador')
     for _ in range(20):
-        if 'Firefox' in docker('sh', '-c', 'xwininfo -root -tree 2>/dev/null || true'):
+        if 'Firefox' in window_titles():
             break
         time.sleep(1)
     else:
@@ -99,11 +111,11 @@ Path('/workspaces/arquivos-pc/teste-navegador.html').write_text(
 ''')
     docker('firefox', '--new-tab', 'file:///workspaces/arquivos-pc/teste-navegador.html')
     for _ in range(20):
-        if 'PC Virtual funcionando' in docker('sh', '-c', 'xwininfo -root -tree 2>/dev/null || true'):
+        if 'PC Virtual funcionando' in window_titles():
             break
         time.sleep(1)
     else:
-        raise AssertionError('Firefox abriu, mas não carregou a página de teste.')
+        raise AssertionError('Conclua as boas-vindas do Firefox no container de teste e repita a verificação da página.')
     page.wait_for_timeout(2000)
     page.screenshot(path=str(artifacts / 'firefox-celular.png'))
     browser.close()

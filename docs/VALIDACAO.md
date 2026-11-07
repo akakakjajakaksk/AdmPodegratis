@@ -11,7 +11,7 @@ Verificações aprovadas:
 - Reinício do contêiner preserva a senha e os documentos de teste.
 - Usuário do desktop tem acesso a sudo e consegue gravar em `/workspaces/arquivos-pc`.
 
-O Firefox foi instalado e abriu janelas. O teste de carregamento de páginas ainda não passou neste ambiente local; precisa de verificação no Codespaces. Não foi executado benchmark de jogos ou FPS.
+O Firefox abriu e renderizou um arquivo HTML local após concluir a tela inicial de boas-vindas. Na primeira abertura, conclua essa tela antes de navegar. Não foi executado benchmark de jogos ou FPS.
 
 Para repetir os testes de argumentos:
 
@@ -20,3 +20,5 @@ python3 -m unittest discover -s tests -p 'test_*.py' -v
 ```
 
 `tests/browser_smoke.py` e `tests/restart_smoke.py` são testes de integração para um contêiner Docker descartável, já iniciado e configurado, com Playwright instalado no executor. Eles não criam um Codespace. O teste gráfico fecha janelas de terminal desse contêiner de teste; não execute em uma sessão de uso pessoal.
+
+Antes do teste de páginas, abra o Firefox no desktop de teste e conclua as boas-vindas. Os testes não alteram nem aceitam automaticamente os termos do navegador em um Codespace do usuário.

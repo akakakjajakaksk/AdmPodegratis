@@ -46,6 +46,8 @@ pc resolucao 1280x720
 
 Uma resolução maior aumenta o trabalho de processamento e transmissão, sem criar mais potência.
 
+Ao abrir o Firefox pela primeira vez, ele pode mostrar a tela de boas-vindas e seus termos. Leia essa tela e use **Continuar** se concordar; ela precisa ser concluída antes de navegar.
+
 ## 4. Instalar programas
 
 Use nomes de pacotes Linux disponíveis nos repositórios do sistema. Por exemplo:
