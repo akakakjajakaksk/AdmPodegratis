@@ -1,0 +1,157 @@
+#!/usr/bin/env bash
+# Ferramentas do desktop. Operações de instalação e parada só rodam por comando.
+set -euo pipefail
+
+pc_data_dir=/workspaces/arquivos-pc
+pc_password_file="${HOME}/.config/pc-virtual/password"
+
+pc_error() {
+    printf 'Erro: %s\n' "$*" >&2
+    exit 1
+}
+
+pc_root() {
+    if [[ "$(id -u)" -eq 0 ]]; then
+        "$@"
+    elif command -v sudo >/dev/null 2>&1; then
+        sudo -- "$@"
+    else
+        pc_error 'Este comando precisa de sudo ou de um terminal de administrador.'
+    fi
+}
+
+pc_help() {
+    cat <<'HELP'
+PC Virtual Livre — comandos
+
+  pc abrir                  Mostrar o endereço do desktop para abrir no celular
+  pc url                    Igual a "pc abrir"
+  pc senha                  Mostrar a senha deste desktop
+  pc status                 Ver CPU, memória, disco e renderizador disponíveis
+  pc resolucao 1280x720      Alterar o tamanho do desktop
+  pc instalar PACOTE [...]  Instalar programas dos repositórios Linux com apt
+  pc navegador              Abrir o Firefox, quando instalado
+  pc parar                  Parar este Codespace para encerrar o uso de CPU
+  pc ajuda                  Mostrar esta ajuda
+
+Guarde documentos e downloads em /workspaces/arquivos-pc.
+Parar preserva os arquivos, mas o armazenamento continua usando a cota do GitHub.
+A instalação aceita programas Linux compatíveis; não garante programas Windows.
+HELP
+}
+
+pc_url() {
+    local pc_domain
+    if [[ -n "${CODESPACE_NAME:-}" ]]; then
+        pc_domain="${GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN:-app.github.dev}"
+        [[ "$CODESPACE_NAME" =~ ^[a-zA-Z0-9-]+$ ]] || pc_error 'Nome de Codespace inválido.'
+        [[ "$pc_domain" =~ ^[a-zA-Z0-9.-]+$ ]] || pc_error 'Domínio de encaminhamento inválido.'
+        printf 'https://%s-6080.%s/vnc.html?autoconnect=1&resize=scale&quality=6&compression=2\n' "$CODESPACE_NAME" "$pc_domain"
+    else
+        printf '%s\n' 'http://localhost:6080/vnc.html?autoconnect=1&resize=scale&quality=6&compression=2'
+    fi
+}
+
+pc_status() {
+    local pc_memory_bytes pc_limit pc_disk_path pc_renderer
+    if pgrep -x Xtigervnc >/dev/null 2>&1 && curl --noproxy 127.0.0.1 -fsS --max-time 2 \
+        http://127.0.0.1:6080/vnc.html >/dev/null 2>&1; then
+        printf 'Desktop: ativo; acesso web na porta 6080.\n'
+    else
+        printf 'Desktop: inicializando ou indisponível. Consulte /tmp/container-init.log e /tmp/Xtigervnc.log.\n'
+    fi
+    printf 'CPUs visíveis: %s\n' "$(nproc)"
+    pc_memory_bytes="$(awk '/^MemTotal:/ {printf "%.0f", $2 * 1024}' /proc/meminfo)"
+    for pc_limit_file in /sys/fs/cgroup/memory.max /sys/fs/cgroup/memory/memory.limit_in_bytes; do
+        if [[ -r "$pc_limit_file" ]]; then
+            pc_limit="$(cat "$pc_limit_file")"
+            if [[ "$pc_limit" =~ ^[0-9]+$ ]] && awk -v limit="$pc_limit" -v memory="$pc_memory_bytes" 'BEGIN {exit !(limit > 0 && limit < memory)}'; then
+                pc_memory_bytes="$pc_limit"
+            fi
+        fi
+    done
+    awk -v memory="$pc_memory_bytes" 'BEGIN {printf "Limite de memória visível: %.1f GiB\n", memory / 1073741824}'
+    pc_disk_path="$pc_data_dir"
+    [[ -d "$pc_disk_path" ]] || pc_disk_path="$HOME"
+    printf '\nArmazenamento (%s):\n' "$pc_disk_path"
+    df -h -- "$pc_disk_path"
+    printf '\nRenderização:\n'
+    pc_renderer=''
+    if command -v glxinfo >/dev/null 2>&1; then
+        pc_renderer="$(timeout 5s glxinfo -B 2>/dev/null | sed -n '/OpenGL renderer string:/p' || true)"
+    fi
+    if [[ -n "$pc_renderer" ]]; then
+        printf '%s\n' "$pc_renderer"
+    elif command -v nvidia-smi >/dev/null 2>&1; then
+        nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null || printf '%s\n' 'Nenhuma GPU NVIDIA acessível.'
+    else
+        printf '%s\n' 'Não foi possível identificar uma GPU ou um renderizador gráfico.'
+    fi
+    printf '\n%s\n' 'O desempenho depende do hardware fornecido; este comando não mede FPS.'
+}
+
+pc_resolution() {
+    [[ "$#" -eq 1 ]] || pc_error 'Use: pc resolucao 1280x720'
+    local pc_width pc_height
+    [[ "$1" =~ ^([0-9]{3,4})x([0-9]{3,4})$ ]] || pc_error 'Informe uma resolução como 1280x720.'
+    pc_width=$((10#${BASH_REMATCH[1]}))
+    pc_height=$((10#${BASH_REMATCH[2]}))
+    (( pc_width >= 640 && pc_width <= 2560 && pc_height >= 480 && pc_height <= 1440 )) || pc_error 'Use largura de 640 a 2560 e altura de 480 a 1440.'
+    command -v set-resolution >/dev/null 2>&1 || pc_error 'O serviço de desktop ainda não está instalado.'
+    DISPLAY="${DISPLAY:-:1}" set-resolution "${pc_width}x${pc_height}" "${VNC_DPI:-110}"
+}
+
+pc_install() {
+    [[ "$#" -gt 0 ]] || pc_error 'Use: pc instalar nome-do-pacote [outro-pacote]'
+    local pc_package
+    for pc_package in "$@"; do
+        [[ "$pc_package" =~ ^[a-z0-9][a-z0-9+.-]*(:[a-z0-9]+)?$ ]] || pc_error "Nome de pacote inválido: $pc_package"
+    done
+    command -v apt-get >/dev/null 2>&1 || pc_error 'apt-get não está disponível neste sistema.'
+    pc_root apt-get update
+    pc_root env DEBIAN_FRONTEND=noninteractive apt-get install -y -- "$@"
+}
+
+pc_stop() {
+    if [[ -n "${CODESPACE_NAME:-}" ]] && command -v gh >/dev/null 2>&1; then
+        printf '%s\n' 'Parando este Codespace. O desktop será desconectado.'
+        if gh codespace stop -c "$CODESPACE_NAME"; then
+            return
+        fi
+        printf '%s\n' 'Não foi possível parar automaticamente com a autenticação disponível.' >&2
+    fi
+    printf '%s\n' 'Abra https://github.com/codespaces, toque em (...) neste Codespace e escolha "Stop codespace".'
+}
+
+pc_command="${1:-ajuda}"
+if [[ "$#" -gt 0 ]]; then
+    shift
+fi
+case "$pc_command" in
+    abrir|url)
+        [[ "$#" -eq 0 ]] || pc_error 'Use: pc abrir'
+        pc_url
+        ;;
+    senha)
+        [[ "$#" -eq 0 ]] || pc_error 'Use: pc senha'
+        [[ -f "$pc_password_file" && -r "$pc_password_file" ]] || pc_error 'A senha ainda não foi criada. Aguarde a inicialização do desktop.'
+        cat -- "$pc_password_file"
+        ;;
+    status)
+        [[ "$#" -eq 0 ]] || pc_error 'Use: pc status'
+        pc_status
+        ;;
+    resolucao) pc_resolution "$@" ;;
+    instalar) pc_install "$@" ;;
+    navegador)
+        [[ "$#" -eq 0 ]] || pc_error 'Use: pc navegador'
+        command -v firefox >/dev/null 2>&1 || pc_error 'O Firefox ainda não está instalado. Consulte as instruções de instalação do projeto.'
+        DISPLAY="${DISPLAY:-:1}" firefox >/dev/null 2>&1 &
+        ;;
+    parar)
+        [[ "$#" -eq 0 ]] || pc_error 'Use: pc parar'
+        pc_stop
+        ;;
+    ajuda|help|-h|--help) pc_help ;;
+    *) pc_error "Comando desconhecido: $pc_command. Use: pc ajuda" ;;
+esac

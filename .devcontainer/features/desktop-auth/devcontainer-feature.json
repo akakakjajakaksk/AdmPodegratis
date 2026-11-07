@@ -1,0 +1,9 @@
+{
+  "id": "desktop-auth",
+  "version": "1.0.0",
+  "name": "PC Virtual Livre: acesso e programas",
+  "description": "Prepara autenticação antes do VNC, menu em português, navegador e comandos do PC.",
+  "installsAfter": [
+    "ghcr.io/devcontainers/features/desktop-lite"
+  ]
+}

@@ -1,2 +1,14 @@
-*.log
+# Arquivos locais e segredos nunca fazem parte do projeto.
 .env
+.env.*
+!.env.example
+*.log
+__pycache__/
+.pytest_cache/
+node_modules/
+test-results/
+artifacts/
+.pc-virtual/
+arquivos-pc/
+*.pem
+*.key

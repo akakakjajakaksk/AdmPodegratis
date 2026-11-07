@@ -1,18 +1,48 @@
 {
-  "name": "Twin PC",
-  "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+  "name": "PC Virtual Livre",
+  "image": "mcr.microsoft.com/devcontainers/universal:2",
+  "remoteUser": "codespace",
   "features": {
-    "ghcr.io/devcontainers/features/docker-outside-of-docker:1": {}
+    "ghcr.io/devcontainers/features/desktop-lite:1.2.10": {
+      "password": "noPassword",
+      "noVncVersion": "1.6.0",
+      "webPort": "6080",
+      "vncPort": "5901"
+    },
+    "./features/desktop-auth": {}
   },
-  "forwardPorts": [
-    3001
-  ],
+  "containerEnv": {
+    "VNC_RESOLUTION": "1280x720x24",
+    "VNC_DPI": "110"
+  },
+  "hostRequirements": {
+    "cpus": 2,
+    "memory": "8gb"
+  },
+  "runArgs": ["--shm-size=1g"],
+  "forwardPorts": [6080],
   "portsAttributes": {
-    "3001": {
-      "label": "Twin PC Desktop",
+    "6080": {
+      "label": "Meu PC — área de trabalho",
       "onAutoForward": "notify",
-      "visibility": "private"
+      "protocol": "http"
+    },
+    "5901": {
+      "onAutoForward": "ignore"
     }
   },
-  "postCreateCommand": "mkdir -p \"$HOME/twin-pc-data\""
+  "otherPortsAttributes": {
+    "onAutoForward": "ignore"
+  },
+  "postStartCommand": ["bash", ".devcontainer/post-start.sh"],
+  "customizations": {
+    "codespaces": {
+      "openFiles": ["README.md"]
+    },
+    "vscode": {
+      "settings": {
+        "remote.autoForwardPorts": true
+      }
+    }
+  }
 }
